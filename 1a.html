@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive Chess Board</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css">
+<style>
+    #board { 
+        display: grid; 
+        grid-template-columns: repeat(8, 50px); 
+        grid-template-rows: repeat(8, 50px); 
+        width: 400px; 
+    }
+    .square { 
+        width: 50px; 
+        height: 50px; 
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 30px;
+    }
+    .white { background: #f0d9b5; }
+    .black { background: #b58863; }
+    .highlight { background: rgba(0, 255, 0, 0.3); }
+    #moveHistory { height: 400px; overflow-y: auto; }
+</style>
+</head>
+<body>
+<div id="game">
+    <div id="board"></div>
+    <div id="moveHistory"></div>
+    <button id="undo">Undo</button>
+    <button id="redo">Redo</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/interactjs@1.10.11/dist/interact.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://d3js.org/d3.v6.min.js"></script>
+<script>
+    // Chess logic, drag-and-drop, 3D setup, etc., will go here
+    const board = document.getElementById('board');
+    const pieces = ['♜', '♞', '♝', '♛', '♚', '♝', '♞', '♜', '♟', '♟', '♟', '♟', '♟', '♟', '♟', '♟', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '♙', '♙', '♙', '♙', '♙', '♙', '♙', '♙', '♖', '♘', '♗', '♕', '♔', '♗', '♘', '♖'];
+    
+    // Populate board
+    pieces.forEach((piece, index) => {
+        const square = document.createElement('div');
+        square.className = `square ${((Math.floor(index / 8) + index) % 2 == 0) ? 'white' : 'black'}`;
+        square.dataset.index = index;
+        square.textContent = piece;
+        board.appendChild(square);
+    });
+
+    interact('.square')
+        .draggable({
+            // Drag and drop logic here
+        })
+        .on('dragmove', function (event) {
+            // Handle drag movement
+        })
+        .on('dragend', function (event) {
+            // Handle drop
+        });
+
+    // Initialize 3D board setup with Three.js
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Here you would set up your 3D chess pieces and board
+    // camera.position.z = 5; // Example position
+
+    function animate() {
+        requestAnimationFrame(animate);
+        // Add any animations or updates here
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    // Chess game logic, move history, and other functionalities would be implemented here
+</script>
+</body>
+</html>

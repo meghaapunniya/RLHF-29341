@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interactive Chess Board</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/interact.js/1.10.11/interact.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        background-color: #f0f0f0;
+      }
+
+      .container {
+        display: flex;
+        gap: 20px;
+      }
+
+      #chessboard {
+        width: 400px;
+        height: 400px;
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        grid-template-rows: repeat(8, 1fr);
+        border: 2px solid #333;
+      }
+
+      .square {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+      }
+
+      .piece {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 40px;
+        cursor: grab;
+        user-select: none;
+        z-index: 1;
+      }
+
+      .piece:active {
+        cursor: grabbing;
+      }
+
+      .white {
+        background-color: #f0d9b5;
+      }
+
+      .black {
+        background-color: #b58863;
+      }
+
+      .highlight {
+        background-color: rgba(0, 255, 0, 0.3);
+      }
+
+      .capture-highlight {
+        background-color: rgba(255, 0, 0, 0.3);
+      }
+
+      .side-panel {
+        width: 200px;
+      }
+
+      #moveHistory {
+        height: 300px;
+        overflow-y: auto;
+        border: 1px solid #ccc;
+        padding: 10px;
+        margin-bottom: 10px;
+      }
+
+      #capturedPieces {
+        height: 100px;
+        border: 1px solid #ccc;
+        padding: 10px;
+      }
+
+      #controls {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 10px;
+      }
+
+      #canvas3d {
+        width: 400px;
+        height: 400px;
+        display: none;
+      }
+
+      #rotateBtn {
+        margin-left: 10px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <div>
+        <div id="chessboard"></div>
+        <canvas id="canvas3d"></canvas>
+        <div id="controls">
+          <button id="undoBtn" class="btn btn-secondary">Undo</button>
+          <button id="redoBtn" class="btn btn-secondary">Redo</button>
+          <button id="toggleViewBtn" class="btn btn-primary">Toggle 3D</button>
+          <button id="rotateBtn" class="btn btn-primary" style="display: none">
+            Rotate Board
+          </button>
+        </div>
+      </div>
+      <div class="side-panel">
+        <h3>Move History</h3>
+        <div id="moveHistory"></div>
+        <h3>Captured Pieces</h3>
+        <div id="capturedPieces"></div>
+      </div>
+    </div>
+
+    <script>
+      const board = document.getElementById('chessboard');
+      const moveHistory = document.getElementById('moveHistory');
+      const capturedPieces = document.getElementById('capturedPieces');
+      const undoBtn = document.getElementById('undoBtn');
+      const redoBtn = document.getElementById('redoBtn');
+      const toggleViewBtn = document.getElementById('toggleViewBtn');
+      const rotateBtn = document.getElementById('rotateBtn');
+      const canvas3d = document.getElementById('canvas3d');
+
+      const game = new Chess();
+      let selectedPiece = null;
+      let moveStack = [];
+      let redoStack = [];
+      let draggedPiece = null;
+      let dragStartSquare = null;
+      let is3DView = false;
+
+      const pieceSymbols = {
+        p: '♙',
+        r: '♖',
+        n: '♘',
+        b: '♗',
+        q: '♕',
+        k: '♔',
+        P: '♟',
+        R: '♜',
+        N: '♞',
+        B: '♝',
+        Q: '♛',
+        K: '♚',
+      };
+
+      function createBoard() {
+        board.innerHTML = '';
+        for (let i = 0; i < 64; i++) {
+          const square = document.createElement('div');
+          square.classList.add('square');
+          square.classList.add(
+            (i + Math.floor(i / 8)) % 2 === 0 ? 'white' : 'black'
+          );
+          square.dataset.square =
+            String.fromCharCode(97 + (i % 8)) + (8 - Math.floor(i / 8));
+
+          // Add dragover and drop event listeners to each square
+          square.addEventListener('dragover', dragOver);
+          square.addEventListener('drop', drop);
+
+          board.appendChild(square);
+        }
+        updateBoard();
+      }
+
+      function updateBoard() {
+        const squares = board.querySelectorAll('.square');
+        squares.forEach((square) => {
+          square.innerHTML = '';
+          const piece = game.get(square.dataset.square);
+          if (piece) {
+            const pieceElement = document.createElement('div');
+            pieceElement.classList.add('piece');
+            pieceElement.textContent = pieceSymbols[piece.type];
+            pieceElement.style.color = piece.color === 'w' ? 'white' : 'black';
+            pieceElement.dataset.square = square.dataset.square;
+
+            // Make the piece draggable
+            pieceElement.draggable = true;
+            pieceElement.addEventListener('dragstart', dragStart);
+            pieceElement.addEventListener('dragend', dragEnd);
+
+            square.appendChild(pieceElement);
+          }
+        });
+      }
+      function highlightLegalMoves(square) {
+        const moves = game.moves({ square: square, verbose: true });
+        moves.forEach((move) => {
+          const targetSquare = document.querySelector(
+            `[data-square="${move.to}"]`
+          );
+          targetSquare.classList.add(
+            move.captured ? 'capture-highlight' : 'highlight'
+          );
+        });
+      }
+
+      function clearHighlights() {
+        const squares = board.querySelectorAll('.square');
+        squares.forEach((square) => {
+          square.classList.remove('highlight', 'capture-highlight');
+        });
+      }
+
+      function addMoveToHistory(move) {
+        const moveElement = document.createElement('div');
+        moveElement.textContent = `${move.from} to ${move.to}`;
+        moveHistory.appendChild(moveElement);
+        moveHistory.scrollTop = moveHistory.scrollHeight;
+      }
+
+      function updateCapturedPieces() {
+        const captured = { w: '', b: '' };
+        game.history({ verbose: true }).forEach((move) => {
+          if (move.captured) {
+            captured[move.color] += pieceSymbols[move.captured.toUpperCase()];
+          }
+        });
+        capturedPieces.innerHTML = `
+                <div>White captured: ${captured.b}</div>
+                <div>Black captured: ${captured.w}</div>
+            `;
+      }
+
+      function dragStart(e) {
+        draggedPiece = e.target;
+        dragStartSquare = e.target.parentNode.dataset.square;
+        setTimeout(() => {
+          e.target.style.display = 'none';
+        }, 0);
+        clearHighlights();
+        highlightLegalMoves(dragStartSquare);
+      }
+
+      function dragEnd(e) {
+        setTimeout(() => {
+          if (e.target && e.target.style) {
+            e.target.style.display = '';
+          }
+          draggedPiece = null;
+          dragStartSquare = null;
+        }, 0);
+        clearHighlights();
+      }
+
+      function dragOver(e) {
+        e.preventDefault();
+      }
+
+      // Update the drop function to ensure the dragged piece is reset properly
+      function drop(e) {
+        e.preventDefault();
+        const targetSquare = e.target.closest('.square');
+        if (targetSquare && draggedPiece && dragStartSquare) {
+          const move = makeMove(dragStartSquare, targetSquare.dataset.square);
+          if (!move) {
+            // If the move is illegal, update the board to its correct state
+            updateBoard();
+          }
+        }
+        // Ensure the dragged piece is visible again
+        if (draggedPiece) {
+          draggedPiece.style.display = '';
+        }
+        clearHighlights();
+        draggedPiece = null;
+        dragStartSquare = null;
+      }
+
+      function makeMove(from, to) {
+        const move = game.move({ from, to, promotion: 'q' });
+        if (move) {
+          updateBoard();
+          addMoveToHistory(move);
+          updateCapturedPieces();
+          moveStack.push(move);
+          redoStack = [];
+          playMoveSound(move);
+          if (is3DView) {
+            update3DBoard();
+          }
+        }
+        return move;
+      }
+
+      function undoMove() {
+        if (moveStack.length > 0) {
+          const move = moveStack.pop();
+          game.undo();
+          updateBoard();
+          updateCapturedPieces();
+          redoStack.push(move);
+          moveHistory.removeChild(moveHistory.lastChild);
+          playUndoSound();
+          if (is3DView) {
+            update3DBoard();
+          }
+        }
+      }
+
+      function redoMove() {
+        if (redoStack.length > 0) {
+          const move = redoStack.pop();
+          game.move(move);
+          updateBoard();
+          updateCapturedPieces();
+          moveStack.push(move);
+          addMoveToHistory(move);
+          playMoveSound(move);
+          if (is3DView) {
+            update3DBoard();
+          }
+        }
+      }
+
+      board.addEventListener('click', (e) => {
+        const square = e.target.closest('.square');
+        if (!square) return;
+
+        if (selectedPiece) {
+          makeMove(selectedPiece, square.dataset.square);
+          clearHighlights();
+          selectedPiece = null;
+        } else {
+          const piece = game.get(square.dataset.square);
+          if (piece && piece.color === (game.turn() === 'w' ? 'w' : 'b')) {
+            selectedPiece = square.dataset.square;
+            clearHighlights();
+            highlightLegalMoves(selectedPiece);
+          }
+        }
+      });
+
+      undoBtn.addEventListener('click', undoMove);
+      redoBtn.addEventListener('click', redoMove);
+
+      // 3D view
+      let scene, camera, renderer, chessboardGroup, controls;
+      let currentRotation = 0;
+      const pieceGeometries = {};
+      const pieceMaterials = {
+        w: new THREE.MeshPhongMaterial({ color: 0xffffff }),
+        b: new THREE.MeshPhongMaterial({ color: 0x000000 }),
+      };
+
+      function init3DScene() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(
+          75,
+          canvas3d.clientWidth / canvas3d.clientHeight,
+          0.1,
+          1000
+        );
+        renderer = new THREE.WebGLRenderer({
+          canvas: canvas3d,
+          antialias: true,
+        });
+        renderer.setSize(canvas3d.clientWidth, canvas3d.clientHeight);
+
+        chessboardGroup = new THREE.Group();
+        scene.add(chessboardGroup);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight.position.set(5, 5, 5);
+        scene.add(directionalLight);
+
+        camera.position.set(0, 5, 10);
+        camera.lookAt(0, 0, 0);
+
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.25;
+        controls.screenSpacePanning = false;
+        controls.maxPolarAngle = Math.PI / 2;
+        controls.minDistance = 5;
+        controls.maxDistance = 15;
+
+        createPieceGeometries();
+        create3DBoard();
+      }
+
+      function rotateBoard() {
+        if (is3DView) {
+          currentRotation += Math.PI;
+          gsap.to(chessboardGroup.rotation, {
+            y: currentRotation,
+            duration: 1,
+            ease: 'power2.inOut',
+          });
+        }
+      }
+      function createPieceGeometries() {
+        // Pawn
+        const pawnBase = new THREE.CylinderGeometry(0.2, 0.25, 0.1, 32);
+        const pawnBody = new THREE.CylinderGeometry(0.15, 0.2, 0.4, 32);
+        const pawnHead = new THREE.SphereGeometry(0.15, 32, 32);
+        pieceGeometries.pawn = THREE.BufferGeometryUtils.mergeBufferGeometries([
+          pawnBase.translate(0, 0.05, 0),
+          pawnBody.translate(0, 0.3, 0),
+          pawnHead.translate(0, 0.55, 0),
+        ]);
+
+        // Rook
+        const rookBase = new THREE.CylinderGeometry(0.25, 0.3, 0.1, 32);
+        const rookBody = new THREE.CylinderGeometry(0.2, 0.25, 0.4, 32);
+        const rookTop = new THREE.CylinderGeometry(0.22, 0.22, 0.1, 32);
+        const rookCrenellation = new THREE.BoxGeometry(0.08, 0.1, 0.08);
+        pieceGeometries.rook = THREE.BufferGeometryUtils.mergeBufferGeometries([
+          rookBase.translate(0, 0.05, 0),
+          rookBody.translate(0, 0.3, 0),
+          rookTop.translate(0, 0.55, 0),
+          rookCrenellation.translate(0.11, 0.65, 0.11),
+          rookCrenellation.translate(-0.11, 0.65, 0.11),
+          rookCrenellation.translate(0.11, 0.65, -0.11),
+          rookCrenellation.translate(-0.11, 0.65, -0.11),
+        ]);
+
+        // Knight
+        const knightBase = new THREE.CylinderGeometry(0.25, 0.3, 0.1, 32);
+        const knightBody = new THREE.CylinderGeometry(0.2, 0.25, 0.3, 32);
+        const knightHead = new THREE.SphereGeometry(0.22, 32, 32);
+        const knightNose = new THREE.ConeGeometry(0.1, 0.3, 32);
+        pieceGeometries.knight =
+          THREE.BufferGeometryUtils.mergeBufferGeometries([
+            knightBase.translate(0, 0.05, 0),
+            knightBody.translate(0, 0.25, 0),
+            knightHead.translate(0, 0.5, 0.05),
+            knightNose.rotateX(-Math.PI / 2).translate(0, 0.5, 0.25),
+          ]);
+
+        // Bishop
+        const bishopBase = new THREE.CylinderGeometry(0.25, 0.3, 0.1, 32);
+        const bishopBody = new THREE.CylinderGeometry(0.18, 0.25, 0.4, 32);
+        const bishopHead = new THREE.SphereGeometry(0.18, 32, 32);
+        const bishopTop = new THREE.ConeGeometry(0.08, 0.1, 32);
+        pieceGeometries.bishop =
+          THREE.BufferGeometryUtils.mergeBufferGeometries([
+            bishopBase.translate(0, 0.05, 0),
+            bishopBody.translate(0, 0.3, 0),
+            bishopHead.translate(0, 0.55, 0),
+            bishopTop.translate(0, 0.7, 0),
+          ]);
+
+        // Queen
+        const queenBase = new THREE.CylinderGeometry(0.3, 0.35, 0.1, 32);
+        const queenBody = new THREE.CylinderGeometry(0.25, 0.3, 0.45, 32);
+        const queenHead = new THREE.SphereGeometry(0.25, 32, 32);
+        const queenCrown = new THREE.ConeGeometry(0.2, 0.1, 32);
+        pieceGeometries.queen = THREE.BufferGeometryUtils.mergeBufferGeometries(
+          [
+            queenBase.translate(0, 0.05, 0),
+            queenBody.translate(0, 0.325, 0),
+            queenHead.translate(0, 0.65, 0),
+            queenCrown.translate(0, 0.85, 0),
+          ]
+        );
+
+        // King
+        const kingBase = new THREE.CylinderGeometry(0.3, 0.35, 0.1, 32);
+        const kingBody = new THREE.CylinderGeometry(0.25, 0.3, 0.5, 32);
+        const kingHead = new THREE.SphereGeometry(0.25, 32, 32);
+        const kingCrown = new THREE.CylinderGeometry(0.2, 0.2, 0.1, 32);
+        const kingCross1 = new THREE.BoxGeometry(0.05, 0.2, 0.05);
+        const kingCross2 = new THREE.BoxGeometry(0.15, 0.05, 0.05);
+        pieceGeometries.king = THREE.BufferGeometryUtils.mergeBufferGeometries([
+          kingBase.translate(0, 0.05, 0),
+          kingBody.translate(0, 0.35, 0),
+          kingHead.translate(0, 0.7, 0),
+          kingCrown.translate(0, 0.9, 0),
+          kingCross1.translate(0, 1.05, 0),
+          kingCross2.translate(0, 1.05, 0),
+        ]);
+      }
+
+      function create3DBoard() {
+        chessboardGroup.clear();
+
+        const squareSize = 1;
+        const boardSize = 8 * squareSize;
+
+        // Create board
+        for (let i = 0; i < 8; i++) {
+          for (let j = 0; j < 8; j++) {
+            const squareGeometry = new THREE.BoxGeometry(
+              squareSize,
+              0.1,
+              squareSize
+            );
+            const squareMaterial = new THREE.MeshPhongMaterial({
+              color: (i + j) % 2 === 0 ? 0xf0d9b5 : 0xb58863,
+            });
+            const square = new THREE.Mesh(squareGeometry, squareMaterial);
+            square.position.set(
+              (i - 3.5) * squareSize,
+              -0.05,
+              (j - 3.5) * squareSize
+            );
+            chessboardGroup.add(square);
+          }
+        }
+
+        // Add pieces
+        for (let i = 0; i < 8; i++) {
+          for (let j = 0; j < 8; j++) {
+            const piece = game.get(String.fromCharCode(97 + i) + (8 - j));
+            if (piece) {
+              const pieceGeometry = pieceGeometries[getPieceType(piece.type)];
+              const pieceMaterial = pieceMaterials[piece.color];
+              const pieceMesh = new THREE.Mesh(pieceGeometry, pieceMaterial);
+              pieceMesh.scale.set(0.5, 0.5, 0.5);
+              pieceMesh.position.set(
+                (i - 3.5) * squareSize,
+                0.3,
+                (j - 3.5) * squareSize
+              );
+              if (piece.type === 'n') {
+                pieceMesh.rotation.x = Math.PI / 2;
+              }
+              chessboardGroup.add(pieceMesh);
+            }
+          }
+        }
+      }
+
+      function getPieceType(type) {
+        const pieceTypes = {
+          p: 'pawn',
+          r: 'rook',
+          n: 'knight',
+          b: 'bishop',
+          q: 'queen',
+          k: 'king',
+        };
+        return pieceTypes[type.toLowerCase()];
+      }
+
+      function update3DBoard() {
+        create3DBoard();
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      function toggle3DView() {
+        is3DView = !is3DView;
+        const toggleViewBtn = document.getElementById('toggleViewBtn');
+
+        if (is3DView) {
+          board.style.display = 'none';
+          canvas3d.style.display = 'block';
+          toggleViewBtn.textContent = 'Toggle 2D';
+          rotateBtn.style.display = 'block';
+          if (!scene) {
+            init3DScene();
+            animate();
+          }
+          update3DBoard();
+        } else {
+          board.style.display = 'grid';
+          canvas3d.style.display = 'none';
+          toggleViewBtn.textContent = 'Toggle 3D';
+          rotateBtn.style.display = 'none';
+        }
+      }
+
+      toggleViewBtn.addEventListener('click', toggle3DView);
+      rotateBtn.addEventListener('click', rotateBoard);
+
+      document.addEventListener('DOMContentLoaded', () => {
+        const toggleViewBtn = document.getElementById('toggleViewBtn');
+        toggleViewBtn.textContent = 'Toggle 3D';
+      });
+      // Sound effects
+      const moveAudio = new Audio(
+        'https://assets.mixkit.co/active_storage/sfx/2073/2073-preview.mp3'
+      );
+      const captureAudio = new Audio(
+        'https://assets.mixkit.co/active_storage/sfx/1930/1930-preview.mp3'
+      );
+      const undoAudio = new Audio(
+        'https://assets.mixkit.co/active_storage/sfx/266/266-preview.mp3'
+      );
+
+      function playMoveSound(move) {
+        if (move.captured) {
+          captureAudio.play();
+        } else {
+          moveAudio.play();
+        }
+      }
+
+      function playUndoSound() {
+        undoAudio.play();
+      }
+
+      createBoard();
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+  </body>
+</html>

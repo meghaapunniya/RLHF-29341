@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive Chess Board</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<style>
+    body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f0d9b5; }
+    #chessboard { width: 480px; height: 480px; display: grid; grid-template: repeat(8, 1fr) / repeat(8, 1fr); }
+    .square { width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; }
+    .white { background: #f0d9b5; }
+    .black { background: #b58863; }
+    .highlight { opacity: 0.5; }
+    .piece { cursor: grab; }
+    #moveHistory { width: 200px; height: 480px; overflow-y: auto; margin-left: 20px; background: #fff; padding: 10px; }
+    #controls button { margin: 5px; }
+</style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <div id="chessboard"></div>
+    <div id="controls">
+        <button onclick="undoMove()">Undo</button>
+        <button onclick="redoMove()">Redo</button>
+        <button onclick="toggle3D()">Toggle 3D</button>
+    </div>
+    <div id="moveHistory"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+    let board = document.getElementById('chessboard');
+    let historyPanel = document.getElementById('moveHistory');
+    let moves = [], moveIndex = -1;
+    let is3D = false;
+    let scene, camera, renderer, chessboard3D;
+
+    // Chess logic setup would go here, including piece definitions, move legality, etc.
+
+    function createBoard() {
+        for(let i = 0; i < 8; i++) {
+            for(let j = 0; j < 8; j++) {
+                let square = document.createElement('div');
+                square.className = `square ${(i+j)%2 ? 'black' : 'white'}`;
+                square.id = `sq${i}${j}`;
+                square.dataset.row = i;
+                square.dataset.col = j;
+                square.draggable = true;
+                square.addEventListener('dragstart', drag);
+                square.addEventListener('drop', drop);
+                square.addEventListener('dragover', allowDrop);
+                board.appendChild(square);
+            }
+        }
+        init3D();
+    }
+
+    function allowDrop(ev) {
+        ev.preventDefault();
+    }
+
+    function drag(ev) {
+        ev.dataTransfer.setData("text", ev.target.id);
+    }
+
+    function drop(ev) {
+        ev.preventDefault();
+        let data = ev.dataTransfer.getData("text");
+        let piece = document.getElementById(data);
+        let fromSquare = piece.parentElement;
+        let toSquare = ev.target;
+        
+        if(toSquare.className.includes('square')) {
+            // Here you would check if the move is valid
+            makeMove(fromSquare, toSquare, piece);
+        }
+    }
+
+    function makeMove(from, to, piece) {
+        // Implement move logic, including updating moves array for history
+        // This is a placeholder:
+        to.appendChild(piece);
+        moves.push({from: from.id, to: to.id, piece: piece.id});
+        moveIndex++;
+        updateMoveHistory();
+    }
+
+    function updateMoveHistory() {
+        historyPanel.innerHTML = '';
+        moves.forEach((move, index) => {
+            let moveText = `${move.piece} from ${move.from} to ${move.to}`;
+            let div = document.createElement('div');
+            div.textContent = moveText;
+            historyPanel.appendChild(div);
+        });
+    }
+
+    function undoMove() {
+        if(moveIndex > 0) {
+            moveIndex--;
+            // Undo logic here
+            updateMoveHistory();
+        }
+    }
+
+    function redoMove() {
+        if(moveIndex < moves.length - 1) {
+            moveIndex++;
+            // Redo logic here
+            updateMoveHistory();
+        }
+    }
+
+    function toggle3D() {
+        is3D = !is3D;
+        if(is3D) {
+            board.style.display = 'none';
+            renderer.domElement.style.display = 'block';
+        } else {
+            board.style.display = 'grid';
+            renderer.domElement.style.display = 'none';
+        }
+    }
+
+    function init3D() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        renderer = new THREE.WebGLRenderer();
+        renderer.setSize(480, 480);
+        document.body.appendChild(renderer.domElement);
+
+        // Basic 3D board setup - this would need detailed implementation
+        const geometry = new THREE.BoxGeometry(1, 0.1, 1);
+        const material = new THREE.MeshBasicMaterial({color: 0x8B4513});
+        chessboard3D = new THREE.Mesh(geometry, material);
+        scene.add(chessboard3D);
+
+        camera.position.z = 5;
+    }
+
+    createBoard();
+    // Start game loop or animation for 3D
+</script>
+
+</body>
+</html>
